@@ -8,9 +8,6 @@ import time
 import json
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
-import asyncio
-import aiohttp
-import concurrent.futures
 from threading import Lock
 
 class BSCScanner:
