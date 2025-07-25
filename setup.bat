@@ -1,26 +1,36 @@
 @echo off
 echo ===============================================
-echo ALICE Bot - Setup Script
+echo ALICE Bot - Complete Setup Script
 echo Author: onex_dv
 echo ===============================================
 
-echo Creating directory structure…
-mkdir core 2>nul
-mkdir interface 2>nul
-mkdir credentials 2>nul
-mkdir result 2>nul
+echo [1/5] Creating directory structure...
+if not exist "core" mkdir core
+if not exist "interface" mkdir interface  
+if not exist "credentials" mkdir credentials
+if not exist "result" mkdir result
 
-echo Installing Python dependencies…
+echo [2/5] Installing Python dependencies...
 pip install requests>=2.28.0
-pip install aiohttp>=3.8.0
 pip install colorama>=0.4.4
+pip install pathlib2>=2.3.0
+pip install typing-extensions>=4.0.0
 
-echo Setup completed successfully!
+echo [3/5] Verifying installation...
+python -c "import requests, colorama; print('Dependencies OK')"
+
+echo [4/5] Running system validation...
+python check_system.py
+
+echo [5/5] Setup completed!
 echo.
-echo To run ALICE Bot:
-echo python base.py sc WALLET_ADDRESS p Vv output.txt
+echo ===============================================
+echo ALICE Bot Ready for Use!
+echo ===============================================
 echo.
-echo Example:
+echo Usage Examples:
 echo python base.py sc 0xc51beb5b222aed7f0b56042f04895ee41886b763 p Vv wallet.txt
+echo python base.py sc 0xc51beb5b222aed7f0b56042f04895ee41886b763 p Vf addresses.txt
+echo python base.py help
 echo.
 pause
