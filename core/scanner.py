@@ -92,7 +92,7 @@ class BSCScanner:
             return False
     
     def _get_token_transfers(self, wallet_address: str) -> List[Dict]:
-        """Get token transfer transactions with rate limiting"""
+        """Get token transfer transactions with rate limiting and enhanced error handling"""
         try:
             # Apply rate limiting
             self.rate_limiter.wait()
@@ -104,12 +104,13 @@ class BSCScanner:
                 'startblock': 0,
                 'endblock': 999999999,
                 'page': 1,
-                'offset': 1000,  # Maximum allowed
+                'offset': 100,  # Reduced for better reliability
                 'sort': 'desc',
                 'apikey': self.api_key
             }
             
             self.terminal.debug_api("REQUEST", f"Sending API request to BSCScan")
+            self.terminal.debug_api("PARAMS", f"API Key: {self.api_key[:8]}...{self.api_key[-4:]}")
             
             with self.lock:
                 self.request_count += 1
@@ -119,24 +120,117 @@ class BSCScanner:
             execution_time = time.time() - start_time
             
             self.terminal.debug_api("RESPONSE", f"API response received in {execution_time:.3f}s")
+            self.terminal.debug_api("STATUS", f"HTTP Status: {response.status_code}")
             
             if response.status_code != 200:
                 raise requests.RequestException(f"HTTP {response.status_code}: {response.text}")
             
-            data = response.json()
+            # Parse JSON response
+            try:
+                data = response.json()
+            except json.JSONDecodeError as e:
+                self.terminal.debug_error("API", f"Invalid JSON response: {response.text[:200]}")
+                raise Exception(f"Invalid API response format")
             
-            if data.get('status') != '1':
-                error_msg = data.get('message', 'Unknown API error')
-                if 'rate limit' in error_msg.lower():
+            # Enhanced error handling for BSCScan responses
+            status = data.get('status')
+            message = data.get('message', 'Unknown error')
+            result = data.get('result', [])
+            
+            self.terminal.debug_api("BSCSCAN", f"Status: {status}, Message: {message}")
+            
+            if status == '0':
+                # Handle different error cases
+                if 'no transactions found' in message.lower():
+                    self.terminal.debug_warning("API", "No token transactions found for this wallet")
+                    return []
+                elif 'invalid api key' in message.lower():
+                    raise Exception(f"Invalid API Key: {message}")
+                elif 'rate limit' in message.lower():
                     self.terminal.debug_warning("API", "Rate limit detected, implementing backoff")
-                    time.sleep(1)
+                    time.sleep(2)
                     return self._get_token_transfers(wallet_address)  # Retry
-                raise Exception(f"BSCScan API Error: {error_msg}")
+                elif 'invalid address' in message.lower():
+                    raise Exception(f"Invalid wallet address: {wallet_address}")
+                else:
+                    # For NOTOK or other unknown errors, try with different parameters
+                    self.terminal.debug_warning("API", f"API returned error: {message}, trying alternative approach")
+                    return self._get_token_transfers_fallback(wallet_address)
             
-            transactions = data.get('result', [])
+            if status != '1':
+                raise Exception(f"BSCScan API Error: {message}")
+            
+            transactions = result if isinstance(result, list) else []
             self.terminal.debug_success("API", f"Retrieved {len(transactions)} token transfers")
             
             return transactions
+            
+        except requests.RequestException as e:
+            self.terminal.debug_error("API", f"Network error: {str(e)}")
+            raise
+        except json.JSONDecodeError as e:
+            self.terminal.debug_error("API", f"JSON decode error: {str(e)}")
+            raise
+        except Exception as e:
+            self.terminal.debug_error("API", f"Unexpected error: {str(e)}")
+            raise
+    
+    def _get_token_transfers_fallback(self, wallet_address: str) -> List[Dict]:
+        """Fallback method with different API parameters"""
+        try:
+            self.terminal.debug_step("FALLBACK", "Trying fallback API approach")
+            
+            # Try with normal transactions instead of token transactions
+            params = {
+                'module': 'account',
+                'action': 'txlist',
+                'address': wallet_address,
+                'startblock': 0,
+                'endblock': 999999999,
+                'page': 1,
+                'offset': 50,
+                'sort': 'desc',
+                'apikey': self.api_key
+            }
+            
+            self.rate_limiter.wait()
+            
+            response = self.session.get(self.base_url, params=params, timeout=30)
+            
+            if response.status_code != 200:
+                self.terminal.debug_warning("FALLBACK", f"Fallback also failed: HTTP {response.status_code}")
+                return []
+            
+            data = response.json()
+            
+            if data.get('status') == '1':
+                transactions = data.get('result', [])
+                self.terminal.debug_success("FALLBACK", f"Retrieved {len(transactions)} normal transactions")
+                
+                # Convert normal transactions to token-like format
+                converted_transactions = []
+                for tx in transactions[:10]:  # Limit to first 10
+                    if tx.get('value', '0') != '0':  # Only transactions with value
+                        converted_transactions.append({
+                            'hash': tx.get('hash', ''),
+                            'timeStamp': tx.get('timeStamp', ''),
+                            'from': tx.get('from', ''),
+                            'to': tx.get('to', ''),
+                            'value': tx.get('value', '0'),
+                            'tokenName': 'BNB',
+                            'tokenSymbol': 'BNB',
+                            'tokenDecimal': '18',
+                            'functionName': 'transfer'
+                        })
+                
+                return converted_transactions
+            else:
+                self.terminal.debug_warning("FALLBACK", f"Fallback failed: {data.get('message', 'Unknown error')}")
+                return []
+                
+        except Exception as e:
+            self.terminal.debug_error("FALLBACK", f"Fallback method failed: {str(e)}")
+            return []
             
         except requests.RequestException as e:
             self.terminal.debug_error("API", f"Network error: {str(e)}")
