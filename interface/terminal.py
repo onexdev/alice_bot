@@ -1,4 +1,5 @@
 """
+1
 Terminal Interface Module
 Handles all terminal output, debugging, and visual elements
 """
@@ -9,19 +10,29 @@ from datetime import datetime
 
 class TerminalInterface:
     def __init__(self):
-        self.colors = {
-            'RESET': '\033[0m',
-            'RED': '\033[91m',
-            'GREEN': '\033[92m',
-            'YELLOW': '\033[93m',
-            'BLUE': '\033[94m',
-            'MAGENTA': '\033[95m',
-            'CYAN': '\033[96m',
-            'WHITE': '\033[97m',
-            'BOLD': '\033[1m',
-            'DIM': '\033[2m',
-            'UNDERLINE': '\033[4m'
-        }
+        # Initialize colorama for Windows compatibility
+        try:
+            import colorama
+            colorama.init()
+            self.colors = {
+                'RESET': '\033[0m',
+                'RED': '\033[91m',
+                'GREEN': '\033[92m',
+                'YELLOW': '\033[93m',
+                'BLUE': '\033[94m',
+                'MAGENTA': '\033[95m',
+                'CYAN': '\033[96m',
+                'WHITE': '\033[97m',
+                'BOLD': '\033[1m',
+                'DIM': '\033[2m',
+                'UNDERLINE': '\033[4m'
+            }
+        except ImportError:
+            # Fallback if colorama not available
+            self.colors = {key: '' for key in [
+                'RESET', 'RED', 'GREEN', 'YELLOW', 'BLUE', 
+                'MAGENTA', 'CYAN', 'WHITE', 'BOLD', 'DIM', 'UNDERLINE'
+            ]}
     
     def clear_screen(self):
         """Clear terminal screen"""
